@@ -1,105 +1,111 @@
 import streamlit as st
 import pandas as pd
+from sentence_transformers import SentenceTransformer
 from keybert import KeyBERT
-from backend._trends import get_trends_data  # Impor fungsi dari backend
-from backend._grog import get_grog_response  # Impor fungsi dari backend
+from backend._trends import get_trends_data
+from backend._prompt import create_title_prompt, create_meta_description_prompt, create_url_prompt
 from groq import Groq
 import os
+from dotenv import load_dotenv
+
+# Memuat variabel lingkungan dari file .env
+load_dotenv()
+
+# Mengambil API keys dari environment variables
+api_key = os.getenv("API_KEY")
+grog_api_key = os.getenv("GROG_API_KEY")
+
+# Cek apakah API keys tersedia
+if not api_key:
+    st.error("API key untuk Google Trends tidak ditemukan. Pastikan Anda telah mengatur variabel lingkungan API_KEY.")
+    st.stop()
+
+if not grog_api_key:
+    st.error("API key untuk Grog tidak ditemukan. Pastikan Anda telah mengatur variabel lingkungan GROG_API_KEY.")
+    st.stop()
 
 # Judul aplikasi
-st.title("Keyword Extraction and Google Trends")
+st.title("Rekomendasi On-Page SEO")
 
-# Deskripsi aplikasi
-st.write("""
-    Aplikasi ini menggunakan model **KeyBERT** untuk mengekstraksi kata kunci dari dokumen dan mengambil data
-    "interest over time" dari Google Trends berdasarkan kata kunci yang diekstrak dalam 30 hari terakhir secara global.
-    Anda bisa memasukkan dokumen di bawah ini dan tekan tombol untuk melihat kata kunci yang diekstrak dan
-    data "interest over time" untuk kata kunci tersebut.
-""")
+# Input teks dari pengguna
+doc = st.text_area("Input Content:")
 
-# Menyediakan input teks untuk pengguna
-doc = st.text_area("Masukkan dokumen atau teks untuk ekstraksi kata kunci:")
+# Inisialisasi KeyBERT dengan model SentenceTransformer
+kw_model = KeyBERT(model=SentenceTransformer("all-mpnet-base-v2"))
 
-# Membuat model KeyBERT
-kw_model = KeyBERT()
-
-# Tombol untuk memulai ekstraksi
-if st.button('Ekstrak Kata Kunci'):
-    if doc:  # Jika dokumen tidak kosong
+# Tombol untuk mengeksekusi proses
+if st.button('Process'):
+    if doc:
         # Ekstraksi kata kunci
-        keywords = kw_model.extract_keywords(doc)
-        
-        # Menyusun data dalam format tabel untuk kata kunci
+        keywords = kw_model.extract_keywords(
+            doc,
+            keyphrase_ngram_range=(2, 2),
+            use_mmr=True,
+            diversity=0,
+            top_n=5,
+            stop_words='english'
+        )
+
+        # Tampilkan tabel hasil ekstraksi
         data = {
             "Nomor": [i + 1 for i in range(len(keywords))],
-            "Keywords": [keyword for keyword, score in keywords],
-            "Cosine Similarity": [score for keyword, score in keywords]
+            "Keywords": [keyword for keyword, _ in keywords],
+            "Cosine Similarity": [round(score, 4) for _, score in keywords]
         }
-        
-        # Membuat DataFrame untuk kata kunci
         df_keywords = pd.DataFrame(data)
         st.write("Top 5 Keywords:")
-        st.table(df_keywords)  # Tampilkan tabel kata kunci
-        
-        # Ambil data interest over time untuk setiap kata kunci
-        api_key = "13b874b099de271f564b31c07c2a652f2e7c697586cfa8e512ba870bbfdc42c8"  # Ganti dengan kunci API SERP Anda
+        st.dataframe(df_keywords)
+
+        # Ambil data Google Trends
         trends_data, top_keyword = get_trends_data([keyword for keyword, _ in keywords], api_key)
-        
-        # Periksa jika data trends_data kosong
+
         if not trends_data.empty:
             st.write("Interest Over Time (30 Hari Terakhir - Global):")
-            st.dataframe(trends_data)  # Tampilkan data dalam bentuk tabel
-            
-            # Menampilkan kata kunci dengan interest tertinggi
-            st.write(f"Kata Kunci dengan Interest Tertinggi: {top_keyword['keyword']}")
-            
-            # Buat Prompt untuk Grog API (title, meta description, dan URL)
+            st.dataframe(trends_data)
+            st.write(f"Kata Kunci dengan Interest Tertinggi: **{top_keyword['keyword']}**")
+
+            # Siapkan prompt
             content = doc
             keyword = top_keyword['keyword']
-            
-            # API key Grog API
-            # Menyediakan API key Grog secara langsung
-            grog_api_key = "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"  # Ganti dengan API key yang Anda dapatkan dari Grog
+            title_prompt = create_title_prompt(content, keyword)
+            meta_description_prompt = create_meta_description_prompt(content, keyword)
+            url_prompt = create_url_prompt(content, keyword)
 
-            # Membuat client Grog
+            # Buat client Grog
             client = Groq(api_key=grog_api_key)
 
-            # Membuat prompt untuk title, meta description, dan URL
-            title_prompt = f"Generate an SEO-friendly title based on this content: {content}. The main keyword is {keyword}."
-            meta_description_prompt = f"Generate an SEO meta description for this content: {content}. The main keyword is {keyword}."
-            url_prompt = f"Generate an SEO-friendly URL for this content: {content}. The main keyword is {keyword}."
+            try:
+                title_response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": title_prompt}],
+                    model="llama-3.3-70b-versatile",
+                    stream=False,
+                )
+                meta_description_response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": meta_description_prompt}],
+                    model="llama-3.3-70b-versatile",
+                    stream=False,
+                )
+                url_response = client.chat.completions.create(
+                    messages=[{"role": "user", "content": url_prompt}],
+                    model="llama-3.3-70b-versatile",
+                    stream=False,
+                )
 
-            # Mengirimkan prompt ke Grog API dan mendapatkan respons
-            title_response = client.chat.completions.create(
-                messages=[{"role": "user", "content": title_prompt}],
-                model="llama-3.3-70b-versatile",
-                stream=False,
-            )
-            
-            meta_description_response = client.chat.completions.create(
-                messages=[{"role": "user", "content": meta_description_prompt}],
-                model="llama-3.3-70b-versatile",
-                stream=False,
-            )
-            
-            url_response = client.chat.completions.create(
-                messages=[{"role": "user", "content": url_prompt}],
-                model="llama-3.3-70b-versatile",
-                stream=False,
-            )
+                # Tampilkan hasil dari Grog API
+                st.subheader("Hasil Optimasi SEO:")
 
-            # Menampilkan hasil respons dari Grog API
-            st.write("Generated Title:")
-            st.write(title_response.choices[0].message.content)
+                st.markdown("**Title:**")
+                st.write(title_response.choices[0].message.content)
 
-            st.write("\nGenerated Meta Description:")
-            st.write(meta_description_response.choices[0].message.content)
+                st.markdown("**Meta Description:**")
+                st.write(meta_description_response.choices[0].message.content)
 
-            st.write("\nGenerated URL:")
-            st.write(url_response.choices[0].message.content)
-            
+                st.markdown("**URL:**")
+                st.write(url_response.choices[0].message.content)
+
+            except Exception as e:
+                st.error(f"Terjadi kesalahan saat menghubungi Grog API: {e}")
         else:
-            st.write("Data tidak ditemukan untuk kata kunci tersebut.")
-        
+            st.warning("Data tren tidak tersedia untuk kata kunci yang diekstrak.")
     else:
-        st.write("Masukkan teks untuk melihat hasil ekstraksi kata kunci.")
+        st.warning("Silakan masukkan teks terlebih dahulu sebelum mengekstrak.")

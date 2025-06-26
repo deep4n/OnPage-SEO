@@ -12,11 +12,8 @@ from sklearn import __version__ as sklearn_version
 from sklearn.metrics.pairwise import cosine_similarity
 from sklearn.feature_extraction.text import CountVectorizer
 
-from backend import BaseEmbedder
-from backend import SentenceTransformerBackend
-from backend import select_backend
-from backend import mmr
-
+from backend._utils import select_backend
+from backend._mmr import mmr
 
 class KeyBERT:
     """A minimal method for keyword extraction with BERT.

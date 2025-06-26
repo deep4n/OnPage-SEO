@@ -1,6 +1,6 @@
 import requests
 
-def get_grog_response(prompt, api_key):
+def get_grog_response(prompt, _grog_api_key):
     """
     Mengirimkan prompt ke Grog API dan mendapatkan respons.
     
@@ -13,7 +13,7 @@ def get_grog_response(prompt, api_key):
     """
     url = "https://api.grog.com/generate"
     headers = {
-        "Authorization": f"Bearer {api_key}",
+        "Authorization": f"Bearer {_grog_api_key}",
         "Content-Type": "application/json"
     }
     payload = {

@@ -25,6 +25,7 @@ def get_trends_data(keywords, api_key):
         "q": keywords_str,  # Daftar kata kunci
         "hl": "en",  # Bahasa (English)
         "date": "today 1-m",  # 30 hari terakhir
+        "cat": "0",
         "tz": "-540",  # Zona waktu (UTC -9 jam)
         "data_type": "TIMESERIES",  # Data dalam bentuk time series (interest over time)
         "api_key": api_key  # Kunci API untuk autentikasi
