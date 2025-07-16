@@ -64,16 +64,12 @@ class KeyBERT:
         stop_words: Union[str, List[str]] = "english",
         top_n: int = 5,
         min_df: int = 1,
-        use_maxsum: bool = False,
         use_mmr: bool = False,
         diversity: float = 0.5,
-        nr_candidates: int = 20,
         vectorizer: CountVectorizer = None,
-        highlight: bool = False,
         seed_keywords: Union[List[str], List[List[str]]] = None,
         doc_embeddings: np.array = None,
         word_embeddings: np.array = None,
-        threshold: float = None,
     ) -> Union[List[Tuple[str, float]], List[List[Tuple[str, float]]]]:
         """Extract keywords and/or keyphrases.
 
@@ -232,26 +228,6 @@ class KeyBERT:
             # Capturing empty keywords
             except ValueError:
                 all_keywords.append([])
-
-        # Fine-tune keywords using an LLM
-        if self.llm is not None:
-            import torch
-
-            doc_embeddings = torch.from_numpy(doc_embeddings).float()
-            if torch.cuda.is_available():
-                doc_embeddings = doc_embeddings.to("cuda")
-            if isinstance(all_keywords[0], tuple):
-                candidate_keywords = [[keyword[0] for keyword in all_keywords]]
-            else:
-                candidate_keywords = [[keyword[0] for keyword in keywords] for keywords in all_keywords]
-            keywords = self.llm.extract_keywords(
-                docs,
-                embeddings=doc_embeddings,
-                candidate_keywords=candidate_keywords,
-                threshold=threshold,
-            )
-            return keywords
-        return all_keywords
 
     def extract_embeddings(
         self,
